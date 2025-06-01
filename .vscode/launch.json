@@ -1,0 +1,29 @@
+{
+    // Use the new “pwa-node” debugger for both Node and Jest
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Library",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "runtimeArgs": ["--require", "source-map-support/register"],
+            "program": "${workspaceFolder}/dist/index.cjs.js",
+            "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug Jest Tests",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "runtimeArgs": ["--inspect-brk"],
+            "args": ["${workspaceFolder}/node_modules/jest/bin/jest.js", "--runInBand", "--config", "jest.config.ts"],
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "neverOpen",
+            "windows": {
+                "program": "${workspaceFolder}/node_modules/jest/bin/jest.js"
+            }
+        }
+    ]
+}

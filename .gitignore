@@ -1,0 +1,34 @@
+# Dependencies
+/node_modules/
+
+# Build outputs
+/dist/
+/*.tsbuildinfo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Coverage reports
+/coverage/
+
+# Environment files
+.env
+.env.*.local
+
+# OS files
+.DS_Store
+
+# IDE/editor
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Jest cache
+/jest.cache
+
+# Optional: lockfiles if you prefer a single package manager
+# Uncomment one of these if you don’t want to check in both.
+/package-lock.json
+# /yarn.lock

@@ -20,15 +20,8 @@ pnpm-debug.log*
 # OS files
 .DS_Store
 
-# IDE/editor
-!.vscode/settings.json
-!.vscode/launch.json
-!.vscode/tasks.json
-
 # Jest cache
 /jest.cache
 
-# Optional: lockfiles if you prefer a single package manager
-# Uncomment one of these if you don’t want to check in both.
-/package-lock.json
-# /yarn.lock
+# Unused lock files
+/yarn.lock

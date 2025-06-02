@@ -3,7 +3,7 @@ import { RefinedSetsError } from '../errors/RefinedSetsError';
 interface ILazyIterable<T> extends LazyIterable<T> {}
 
 /**
- * Represents a lazy-evaluated sequence of values.
+ * Represents a lazy-evaluated sequence.
  * Provides lazy evaluated implementations of standard Array methods (map, filter, flatMap, etc.).
  *
  * @template T Type of elements in the sequence.
@@ -12,8 +12,8 @@ export abstract class LazyIterable<T> implements Iterable<T> {
     //#region Inner Classes
 
     /**
-     * LazyIterable instance.
-     * This constructor is protected to ensure that only subclasses can be instantiated.
+     * Concrete implementation backing class for LazyIterable.
+     * This constructor is protected to ensure that only this class can instantiate it.
      */
     private static LazyIterableImpl = class LazyIterableImpl<T> extends LazyIterable<T> {
         public constructor(private readonly generator: () => IterableIterator<T>) {
@@ -115,9 +115,10 @@ export abstract class LazyIterable<T> implements Iterable<T> {
      *
      * @param callback Function to execute for each element.
      */
-    public forEach(callback: (item: T) => void): void {
+    public forEach(callback: (item: T, index: number) => void): void {
+        let index = 0;
         for (const x of this) {
-            callback(x);
+            callback(x, index++);
         }
     }
 
@@ -302,6 +303,18 @@ export abstract class LazyIterable<T> implements Iterable<T> {
         return count;
     }
 
+    /**
+     * Evaluates the iterable immediately and returns a new ILazyIterable containing the materialized elements.
+     * This method is useful when you want to ensure that the sequence is fully evaluated and stored in memory.
+     * It can be used to avoid re-evaluating the sequence multiple times.
+     *
+     * @returns A new ILazyIterable containing all elements from this sequence.
+     */
+    public materialize(): ILazyIterable<T> {
+        const materialized = this.toArray();
+        return new LazyIterable.LazyIterableImpl<T>(materialized[Symbol.iterator].bind(materialized));
+    }
+
     //#endregion
 
     //#region Construct and Convert
@@ -376,7 +389,7 @@ export abstract class LazyIterable<T> implements Iterable<T> {
             );
 
         incrementBy ??= direction;
-        const count = Math.ceil(Math.abs(difference) / Math.abs(incrementBy));
+        const count = Math.floor(Math.abs(difference) / Math.abs(incrementBy));
 
         return new LazyIterable.LazyIterableImpl<number>(function* genFromRange() {
             let value = start;
@@ -397,6 +410,19 @@ export abstract class LazyIterable<T> implements Iterable<T> {
      */
     public static empty<T>(): ILazyIterable<T> {
         return new LazyIterable.LazyIterableImpl<T>(function* genEmpty() {});
+    }
+
+    /**
+     * Creates a new ILazyIterable which yields an infinite sequence of `undefined` values.
+     *
+     * @returns A new ILazyIterable containing the elements from the array.
+     */
+    public static infinite(): ILazyIterable<void> {
+        return new LazyIterable.LazyIterableImpl<void>(function* genInfinite() {
+            while (true) {
+                yield;
+            }
+        });
     }
 
     //#endregion

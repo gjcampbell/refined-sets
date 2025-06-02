@@ -304,6 +304,30 @@ export abstract class LazyIterable<T> implements Iterable<T> {
     }
 
     /**
+     * Returns the first element in the sequence, or undefined if the sequence is empty.
+     *
+     * @returns The first element, or undefined if the sequence is empty.
+     */
+    public first(): T | undefined {
+        for (const x of this) {
+            return x;
+        }
+    }
+
+    /**
+     * Returns the last element in the sequence, or undefined if the sequence is empty.
+     *
+     * @returns The last element, or undefined if the sequence is empty.
+     */
+    public last(): T | undefined {
+        let last: T | undefined;
+        for (const x of this) {
+            last = x;
+        }
+        return last;
+    }
+
+    /**
      * Evaluates the iterable immediately and returns a new ILazyIterable containing the materialized elements.
      * This method is useful when you want to ensure that the sequence is fully evaluated and stored in memory.
      * It can be used to avoid re-evaluating the sequence multiple times.

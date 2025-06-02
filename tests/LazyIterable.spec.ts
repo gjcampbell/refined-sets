@@ -64,6 +64,30 @@ describe('LazyIterable', () => {
         expect(subject.itemsYielded).toBe(9);
     });
 
+    test('should be able to get the first item', () => {
+        const subject = LazyIterable.fromRange(2, 10);
+        const result = subject.skip(2).first();
+        expect(result).toBe(4);
+    });
+
+    test('should return undefined if first is called on an empty iterable', () => {
+        const subject = LazyIterable.fromRange(2, 10);
+        const result = subject.skip(10).first();
+        expect(result).toBeUndefined();
+    });
+
+    test('should be able to get the last item', () => {
+        const subject = LazyIterable.fromRange(2, 10);
+        const result = subject.take(5).last();
+        expect(result).toBe(6);
+    });
+
+    test('should return undefined if last is called on an empty iterable', () => {
+        const subject = LazyIterable.fromRange(2, 10);
+        const result = subject.skip(10).last();
+        expect(result).toBeUndefined();
+    });
+
     test('skip should skip the first n items', () => {
         const result = LazyIterable.fromLength(1000000).skip(999995).take(5).toArray();
 
@@ -241,6 +265,16 @@ describe('LazyIterable', () => {
         expect(postMaterialized.toArray()).toEqual([7, 9]);
         expect(iterable.itemsYielded).toBe(5);
         expect(callback).toHaveBeenCalledTimes(4);
+    });
+
+    test('should be able to create an iterable that yields indefinitely', () => {
+        const stopAfter = 2 ** 20 - 1;
+        const result = LazyIterable.infinite()
+            .map((_, i) => i)
+            .skip(stopAfter)
+            .take(1)
+            .toArray();
+        expect(result).toEqual([stopAfter]);
     });
 });
 

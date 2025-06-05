@@ -9,6 +9,8 @@
     ],
     "scripts": {
         "build": "tsup src/index.ts --format cjs,esm --dts",
+        "build:wasm:bundler": "cd wasm/refined_sets_wasm && wasm-pack build --release --target bundler --out-dir ../../pkg/bundler",
+        "build:wasm:node": "cd wasm/refined_sets_wasm && wasm-pack build --release --target nodejs --out-dir ../../pkg/node",
         "build:prod": "tsup src/index.ts --format esm,cjs --dts --minify",
         "lint": "eslint \"src/**/*.{ts,tsx}\" --fix",
         "prepare": "npm run build",

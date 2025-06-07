@@ -3,6 +3,7 @@ export const enum RefinedSetsErrorCode {
     InternalError = 'internal-error',
     NotSupported = 'not-supported',
     Uninitialized = 'uninitialized',
+    InvalidOperation = 'invalid-operation',
 }
 
 export class RefinedSetsError extends Error {
@@ -30,5 +31,8 @@ export class RefinedSetsError extends Error {
     }
     public static uninitialized(message: string): RefinedSetsError {
         return new RefinedSetsError(RefinedSetsErrorCode.Uninitialized, message);
+    }
+    public static invalidOperation(message: string): RefinedSetsError {
+        return new RefinedSetsError(RefinedSetsErrorCode.InvalidOperation, message);
     }
 }

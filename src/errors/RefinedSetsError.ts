@@ -4,6 +4,7 @@ export const enum RefinedSetsErrorCode {
     NotSupported = 'not-supported',
     Uninitialized = 'uninitialized',
     InvalidOperation = 'invalid-operation',
+    InvalidState = 'invalid-state',
 }
 
 export class RefinedSetsError extends Error {
@@ -34,5 +35,8 @@ export class RefinedSetsError extends Error {
     }
     public static invalidOperation(message: string): RefinedSetsError {
         return new RefinedSetsError(RefinedSetsErrorCode.InvalidOperation, message);
+    }
+    public static invalidState(message: string): RefinedSetsError {
+        return new RefinedSetsError(RefinedSetsErrorCode.InvalidState, message);
     }
 }

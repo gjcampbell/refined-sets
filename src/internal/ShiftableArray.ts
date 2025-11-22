@@ -1,5 +1,6 @@
+import { RefinedSetsError } from '../errors/RefinedSetsError';
 import { BaseArray } from './BaseArray';
-import { IArray } from './IArray';
+import { IArray, VOID } from './IArray';
 
 interface IShiftableArray<T> extends IArray<T> {
     /**
@@ -42,6 +43,20 @@ class ShiftableArrayImpl<T> extends BaseArray<T> implements IShiftableArray<T> {
         return this.headIdx < this.length ? this[this.headIdx] : (emptyResult as T | TEmpty);
     }
 
+    public getAt(index: number): T | typeof VOID {
+        if (index < this.headIdx || index >= this.size) {
+            return VOID;
+        }
+        return this[this.headIdx + index];
+    }
+
+    public removeAt(index: number): T | typeof VOID {
+        if (index > 0) {
+            throw RefinedSetsError.internalError('ShiftableArray does not support removing elements at arbitrary indices, only at 0.');
+        }
+        return this.shift(VOID);
+    }
+
     public shift<TEmpty>(emptyResult?: TEmpty): T | TEmpty {
         if (this.headIdx < this.length) {
             const result = this[this.headIdx];
@@ -54,11 +69,11 @@ class ShiftableArrayImpl<T> extends BaseArray<T> implements IShiftableArray<T> {
     }
 
     public forwardIter(): IterableIterator<T> {
-        return this.internalIter(this.headIdx);
+        return this.internalFwdIter(this.headIdx, this.length);
     }
 
     public reverseIter(): IterableIterator<T> {
-        return this.internalIter(this.length - 1, this.headIdx, -1);
+        return this.internalRevIter(this.length - 1, this.headIdx);
     }
 
     public clear(): void {

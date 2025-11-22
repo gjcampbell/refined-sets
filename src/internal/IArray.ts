@@ -1,4 +1,19 @@
-interface INativeArraySubset<T> {
+export const VOID = Symbol('Void');
+
+export interface IMaterializedIterator<T> {
+    /**
+     * Returns an iterator that yields items in insertion order.
+     * @returns {IterableIterator<T>} An iterator for the array.
+     */
+    forwardIter(): IterableIterator<T>;
+    /**
+     * Returns an iterator that yields items in reverse insertion order.
+     * @returns {IterableIterator<T>} An iterator for the array.
+     */
+    reverseIter(): IterableIterator<T>;
+}
+
+interface INativeArraySubset<T> extends IMaterializedIterator<T> {
     /**
      * O(~m) Adds items to the end of the array.
      * @param item Items to add.
@@ -18,16 +33,6 @@ interface INativeArraySubset<T> {
  */
 export interface IArray<T> extends INativeArraySubset<T> {
     /**
-     * Returns an iterator that yields items in insertion order.
-     * @returns {IterableIterator<T>} An iterator for the array.
-     */
-    forwardIter(): IterableIterator<T>;
-    /**
-     * Returns an iterator that yields items in reverse insertion order.
-     * @returns {IterableIterator<T>} An iterator for the array.
-     */
-    reverseIter(): IterableIterator<T>;
-    /**
      * O(n) Removes all items from the array.
      */
     clear(): void;
@@ -36,4 +41,14 @@ export interface IArray<T> extends INativeArraySubset<T> {
      * @returns {number} The size of the array.
      */
     get size(): number;
+    /**
+     * Remove the item at the specified index.
+     * O(?) Time complexity is implementation-specific
+     * @returns {number} The length of the array.
+     */
+    removeAt(index: number): T | typeof VOID;
+    /**
+     * Access an item by index.
+     */
+    getAt(index: number): T | typeof VOID;
 }

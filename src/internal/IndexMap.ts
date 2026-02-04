@@ -108,7 +108,7 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
         const result: V[] = [];
         if (indexSet) {
             this.indexMap.delete(key);
-            for (const idx of indexSet.forwardIter()) {
+            for (const idx of indexSet.reverseIter()) {
                 const value = this.values.removeAt(idx);
                 if (value !== VOID) {
                     result.push(value);

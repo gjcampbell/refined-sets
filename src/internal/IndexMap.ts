@@ -1,6 +1,5 @@
 import { RefinedSetsError } from '../errors/RefinedSetsError';
 import { IArray, IMaterializedIterator, VOID } from './IArray';
-import { NativeArray } from './NativeArray';
 import { SparseArray } from './SparseArray';
 
 interface IKeyExtractor<V, K> {
@@ -56,6 +55,10 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
     private values: IArray<V>;
     private _size: number = 0;
 
+    private isIndexSetEmpty(indexSet: IKeyIndices): boolean {
+        return indexSet.forwardIter().next().done === true;
+    }
+
     public get size(): number {
         return this._size;
     }
@@ -96,6 +99,9 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
                 result = this.values.removeAt(index);
                 if (result !== VOID) {
                     this._size--;
+                    if (this.isIndexSetEmpty(indexSet)) {
+                        this.indexMap.delete(key);
+                    }
                 }
             }
             return result;
@@ -112,9 +118,9 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
                 const value = this.values.removeAt(idx);
                 if (value !== VOID) {
                     result.push(value);
+                    this._size--;
                 }
             }
-            this._size -= result.length;
         }
         return result;
     }
@@ -125,7 +131,7 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
 
     public push(...item: V[]): number {
         for (const value of item) {
-            this.addToIndexSet(value, this._size);
+            this.addToIndexSet(value, this.values.size);
             this.values.push(value);
             this._size++;
         }
@@ -133,22 +139,30 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
     }
 
     public pop(): V | undefined {
-        if (this._size > 0) {
-            const value = this.values.pop();
-            if (value !== VOID) {
-                const key = this.keyExtractor(value!);
-                const indexSet = this.indexMap.get(key);
-                if (indexSet) {
-                    indexSet.remove(this._size - 1);
-                    if (indexSet.size === 0) {
-                        this.indexMap.delete(key);
-                    }
-                }
-                this._size--;
+        if (this._size === 0) {
+            return undefined;
+        }
+
+        while (true) {
+            const value = this.values.pop() as V | typeof VOID | undefined;
+            if (value === undefined) {
+                return undefined;
             }
+            if (value === VOID) {
+                continue;
+            }
+
+            const key = this.keyExtractor(value);
+            const indexSet = this.indexMap.get(key);
+            if (indexSet) {
+                indexSet.remove(this.values.size);
+                if (this.isIndexSetEmpty(indexSet)) {
+                    this.indexMap.delete(key);
+                }
+            }
+            this._size--;
             return value;
         }
-        return undefined;
     }
 
     public containsKey(key: K): boolean {

@@ -4,7 +4,7 @@ import { IArray, VOID } from './IArray';
 
 type Void = typeof VOID;
 
-interface ISparseArray<T> extends IArray<T | Void> {
+interface ISparseArray<T> extends IArray<T> {
     forwardIter(): IterableIterator<T>;
     forwardIter(yieldHoles: true): IterableIterator<T | Void>;
     reverseIter(): IterableIterator<T>;
@@ -18,6 +18,16 @@ interface ISparseArrayConstructor {
 class SparseArrayImpl<T> extends BaseArray<T | Void> implements ISparseArray<T> {
     public get size(): number {
         return this.length;
+    }
+
+    public pop(): T | undefined {
+        while (this.length > 0) {
+            const result = super.pop();
+            if (result !== VOID) {
+                return result as T;
+            }
+        }
+        return undefined;
     }
 
     public removeAt(index: number): T | Void {
@@ -63,4 +73,8 @@ class SparseArrayImpl<T> extends BaseArray<T | Void> implements ISparseArray<T> 
     }
 }
 
+/**
+ * Array implementation that wraps native array and reimplements methods
+ * that would normally be O(>1) so that they run in O(1) time complexity.
+ */
 export const SparseArray: ISparseArrayConstructor = SparseArrayImpl as any;

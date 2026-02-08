@@ -13,6 +13,9 @@ export interface IMaterializedIterator<T> {
     reverseIter(): IterableIterator<T>;
 }
 
+/**
+ * Wrapper for native array that only exposes O(1) methods and properties
+ */
 interface INativeArraySubset<T> extends IMaterializedIterator<T> {
     /**
      * O(~m) Adds items to the end of the array.

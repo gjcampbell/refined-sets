@@ -65,6 +65,8 @@
         "singleQuote": true,
         "tabWidth": 4,
         "printWidth": 160,
-        "semi": true
+        "semi": true,
+        "experimentalTernaries": true,
+        "experimentalOperatorPosition": "start"
     }
 }

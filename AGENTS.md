@@ -7,7 +7,7 @@ This repo is **RefinedSets**: high-performance, memory-efficient, order-aware JS
 - **Performance first, but measurable**: if you claim faster/leaner, add a benchmark or a micro-measurement note.
 - **No hidden allocations** in hot paths (iteration, membership checks, add/remove).
 - Prefer **array locality** over pointer-heavy structures; avoid linked-list patterns.
-- Preserve **ordered iteration** guarantees explicitly; never “accidentally reorder” due to compaction or deletes.
+- Preserve **ordered iteration** guarantees explicitly; never "accidentally reorder” due to compaction or deletes.
 - **TypeScript-native**: strict typing, inferable APIs, minimal `any`.
 
 ## Core design primitives
@@ -40,7 +40,7 @@ If you add or change a policy:
 
 - Document when compaction runs relative to iteration.
 - State whether indices are stable between operations.
-- Ensure iterators don’t corrupt order semantics.
+- Ensure iterators don't corrupt order semantics.
 
 ### Iteration contracts
 
@@ -60,7 +60,7 @@ If you add or change a policy:
 
 Rules:
 
-- Don’t introduce eager evaluation unless method name clearly implies it (e.g., `toArray`).
+- Don't introduce eager evaluation unless method name clearly implies it (e.g., `toArray`).
 - Prefer generator-based implementations.
 - Keep per-element overhead low (no per-item closures created inside loops when avoidable).
 
@@ -68,7 +68,7 @@ Rules:
 
 - Be consistent across structures: `add`, `delete`, `has`, `clear`, `size`, `values`, `keys`, `entries`, `[Symbol.iterator]`.
 - If semantics differ from native `Set`/`Map`, document it plainly (e.g., whether `delete` returns boolean, what happens on re-add after delete, etc.).
-- Expose “power user” hooks intentionally:
+- Expose "power user” hooks intentionally:
     - `compact()` or `maybeCompact()`
     - `setCompactionPolicy(...)`
     - `asLazy()` and/or `lazy(x)` interop
@@ -114,7 +114,7 @@ If you fix a bug, include a regression test named after the scenario.
 - Favor **composition** over deep inheritance trees.
 - No prototype monkey-patching.
 - Keep modules small and purpose-driven (e.g., `src/structures/`, `src/lazy/`).
-- Avoid “clever” tricks that obscure invariants; the data-structure invariants must be readable.
+- Avoid "clever” tricks that obscure invariants; the data-structure invariants must be readable.
 
 ## PR checklist (agents)
 
@@ -128,9 +128,9 @@ Before you open a PR:
 
 ## What not to do
 
-- Don’t add validation layers or defensive checks in hot paths unless they’re gated or proven cheap.
-- Don’t add dependencies that increase bundle weight without a strong reason.
-- Don’t introduce reindexing work during iteration unless the structure explicitly requires it.
+- Don't add validation layers or defensive checks in hot paths unless they're gated or proven cheap.
+- Don't add dependencies that increase bundle weight without a strong reason.
+- Don't introduce reindexing work during iteration unless the structure explicitly requires it.
 
 ## Working assumptions
 

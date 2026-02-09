@@ -1,4 +1,3 @@
-import { RefinedSetsError } from '../errors/RefinedSetsError';
 import { BaseArray } from './BaseArray';
 import { IArray, VOID } from './IArray';
 
@@ -9,21 +8,41 @@ interface ISparseArray<T> extends IArray<T> {
     forwardIter(yieldHoles: true): IterableIterator<T | Void>;
     reverseIter(): IterableIterator<T>;
     reverseIter(yieldHoles: true): IterableIterator<T | Void>;
-    remove(item: T): boolean;
+    /** O(n) Removes holes by compacting the underlying array. Returns the number of removed holes. */
+    compact(): number;
+    /** remove *count* occurrences of *item* from the array and return the number of removed items. if no count is undefined, remove all occurrences */
+    remove(item: T, count?: number): number;
 }
 interface ISparseArrayConstructor {
     new <T>(initial?: Iterable<T>): ISparseArray<T>;
 }
 
 class SparseArrayImpl<T> extends BaseArray<T | Void> implements ISparseArray<T> {
+    private _size: number = 0;
+
+    public constructor(initial?: Iterable<T>) {
+        super();
+        if (initial && typeof initial === 'object' && Symbol.iterator in initial) {
+            for (const item of initial) {
+                this.push(item);
+            }
+        }
+    }
+
     public get size(): number {
-        return this.length;
+        return this._size;
+    }
+
+    public push(...item: T[]): number {
+        this._size += item.length;
+        return super.push(...item);
     }
 
     public pop(): T | undefined {
         while (this.length > 0) {
             const result = super.pop();
             if (result !== VOID) {
+                this._size--;
                 return result as T;
             }
         }
@@ -32,24 +51,55 @@ class SparseArrayImpl<T> extends BaseArray<T | Void> implements ISparseArray<T> 
 
     public removeAt(index: number): T | Void {
         const result = this.getAt(index);
-        this[index] = VOID;
+        if (result !== VOID) {
+            this[index] = VOID;
+            this._size--;
+        }
         return result;
     }
+
     public clear() {
         this.splice(0, Infinity);
+        this._size = 0;
     }
 
-    public remove(item: T) {
-        let found = false;
+    public compact(): number {
+        if (this._size === this.length) {
+            return 0;
+        }
 
-        for (let i = 0; i < this.length; i++) {
-            if (this[i] === item) {
-                this[i] = VOID;
-                found = true;
+        let writeIdx = 0;
+        for (let readIdx = 0; readIdx < this.length; readIdx++) {
+            const item = this[readIdx];
+            if (item !== VOID) {
+                this[writeIdx++] = item;
             }
         }
 
-        return found;
+        const removedHoles = this.length - this._size;
+        this.length = this._size;
+        return removedHoles;
+    }
+
+    public remove(item: T, count?: number): number {
+        if (count !== undefined && count <= 0) {
+            return 0;
+        }
+
+        let removed = 0;
+        for (let i = 0; i < this.length; i++) {
+            const current = this[i];
+            if (current !== VOID && this.sameValueZero(current, item)) {
+                this[i] = VOID;
+                this._size--;
+                removed++;
+                if (count !== undefined && removed >= count) {
+                    break;
+                }
+            }
+        }
+
+        return removed;
     }
 
     public forwardIter(): IterableIterator<T>;
@@ -70,6 +120,10 @@ class SparseArrayImpl<T> extends BaseArray<T | Void> implements ISparseArray<T> 
                 yield item;
             }
         }
+    }
+
+    private sameValueZero(left: T | Void, right: T): boolean {
+        return left === right || (left !== left && right !== right);
     }
 }
 

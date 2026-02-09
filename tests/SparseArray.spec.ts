@@ -25,7 +25,7 @@ describe('SparseArray', () => {
         const sparseArray = new SparseArray<number>([1, 2, 3]);
 
         expect(sparseArray.removeAt(1)).toBe(2);
-        expect(sparseArray.size).toBe(3);
+        expect(sparseArray.size).toBe(2);
         expect([...sparseArray.forwardIter()]).toEqual([1, 3]);
         expect([...sparseArray.forwardIter(true)]).toEqual([1, VOID, 3]);
     });
@@ -41,16 +41,26 @@ describe('SparseArray', () => {
     it('should remove all matching items', () => {
         const sparseArray = new SparseArray<number>([1, 2, 3, 2, 4]);
 
-        expect(sparseArray.remove(2)).toBe(true);
+        expect(sparseArray.remove(2)).toBe(2);
+        expect(sparseArray.size).toBe(3);
         expect([...sparseArray.forwardIter()]).toEqual([1, 3, 4]);
         expect([...sparseArray.forwardIter(true)]).toEqual([1, VOID, 3, VOID, 4]);
     });
 
-    it('should return false when remove does not find item', () => {
+    it('should return 0 when remove does not find item', () => {
         const sparseArray = new SparseArray<number>([1, 2, 3]);
 
-        expect(sparseArray.remove(9)).toBe(false);
+        expect(sparseArray.remove(9)).toBe(0);
         expect([...sparseArray.forwardIter()]).toEqual([1, 2, 3]);
+    });
+
+    it('should remove only count occurrences when count is provided', () => {
+        const sparseArray = new SparseArray<number>([1, 2, 3, 2, 4]);
+
+        expect(sparseArray.remove(2, 1)).toBe(1);
+        expect(sparseArray.size).toBe(4);
+        expect([...sparseArray.forwardIter()]).toEqual([1, 3, 2, 4]);
+        expect([...sparseArray.forwardIter(true)]).toEqual([1, VOID, 3, 2, 4]);
     });
 
     it('should pop past trailing holes', () => {
@@ -80,5 +90,16 @@ describe('SparseArray', () => {
         expect(sparseArray.size).toBe(0);
         expect([...sparseArray.forwardIter()]).toEqual([]);
         expect([...sparseArray.forwardIter(true)]).toEqual([]);
+    });
+
+    it('should compact holes and preserve order', () => {
+        const sparseArray = new SparseArray<number>([1, 2, 3, 4]);
+        sparseArray.removeAt(1);
+        sparseArray.removeAt(3);
+
+        expect(sparseArray.compact()).toBe(2);
+        expect(sparseArray.size).toBe(2);
+        expect([...sparseArray.forwardIter()]).toEqual([1, 3]);
+        expect([...sparseArray.forwardIter(true)]).toEqual([1, 3]);
     });
 });

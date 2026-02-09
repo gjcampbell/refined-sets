@@ -24,9 +24,9 @@ interface IKeyIndices extends IMaterializedIterator<number> {
     /**
      * Removes an index from the set of indices.
      * O(?) Time complexity is implementation-specific
-     * @returns {boolean} True if the index was removed, false if it was not found.
+     * @returns {number} Number of removed indices.
      */
-    remove(index: number): boolean;
+    remove(index: number): number;
     /**
      * O(1) The number of indices in the set.
      */
@@ -34,10 +34,6 @@ interface IKeyIndices extends IMaterializedIterator<number> {
 }
 
 class SparseArrayKeyIndices extends SparseArray<number> implements IKeyIndices {
-    public remove(index: number) {
-        return super.remove(index);
-    }
-
     public add(index: number): void {
         this.push(index);
     }
@@ -54,6 +50,10 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
 
     private values: IArray<V>;
     private _size: number = 0;
+
+    private get storageLength(): number {
+        return (this.values as unknown as { length: number }).length;
+    }
 
     private isIndexSetEmpty(indexSet: IKeyIndices): boolean {
         return indexSet.forwardIter().next().done === true;
@@ -95,7 +95,7 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
         const indexSet = this.indexMap.get(key);
         if (index !== undefined) {
             let result: V | typeof VOID = VOID;
-            if (indexSet && indexSet.remove(index)) {
+            if (indexSet && indexSet.remove(index) > 0) {
                 result = this.values.removeAt(index);
                 if (result !== VOID) {
                     this._size--;
@@ -131,7 +131,7 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
 
     public push(...item: V[]): number {
         for (const value of item) {
-            this.addToIndexSet(value, this.values.size);
+            this.addToIndexSet(value, this.storageLength);
             this.values.push(value);
             this._size++;
         }
@@ -155,7 +155,7 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
             const key = this.keyExtractor(value);
             const indexSet = this.indexMap.get(key);
             if (indexSet) {
-                indexSet.remove(this.values.size);
+                indexSet.remove(this.storageLength);
                 if (this.isIndexSetEmpty(indexSet)) {
                     this.indexMap.delete(key);
                 }

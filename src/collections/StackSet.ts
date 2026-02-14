@@ -4,8 +4,8 @@ import { BaseOrderedSet, BaseOrderedSetOptions } from './BaseOrderedSet';
  * LIFO stack with ordered-set uniqueness semantics.
  * Insertion order is preserved for iteration; `push` ignores duplicates under default deduplication.
  */
-export class StackSet<T> extends BaseOrderedSet<T> {
-    public constructor(initial?: Iterable<T>, options?: BaseOrderedSetOptions) {
+export class StackSet<T, K = T> extends BaseOrderedSet<T, K> {
+    public constructor(initial?: Iterable<T>, options?: BaseOrderedSetOptions<T, K>) {
         super(initial, options);
     }
 

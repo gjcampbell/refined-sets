@@ -4,8 +4,8 @@ import { BaseOrderedSet, BaseOrderedSetOptions } from './BaseOrderedSet';
  * QueueSet – A FIFO queue with
  * Enqueues only unique values and dequeues in insertion order.
  */
-export class QueueSet<T> extends BaseOrderedSet<T> {
-    public constructor(initial?: Iterable<T>, options?: BaseOrderedSetOptions) {
+export class QueueSet<T, K = T> extends BaseOrderedSet<T, K> {
+    public constructor(initial?: Iterable<T>, options?: BaseOrderedSetOptions<T, K>) {
         super(initial, options);
     }
 

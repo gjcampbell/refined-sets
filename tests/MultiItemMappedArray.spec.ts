@@ -152,4 +152,58 @@ describe('MultiItemMappedArray', () => {
         map.clear();
         expect(map.size).toBe(0);
     });
+
+    it('should track holeCount through remove, pop, compact, rebuild, and clear', () => {
+        const map = createTestMap();
+
+        expect(map.holeCount).toBe(0);
+
+        expect(map.removeAt(3)).toBe('date');
+        expect(map.holeCount).toBe(1);
+
+        expect(map.pop()).toBe('cherry');
+        expect(map.holeCount).toBe(0);
+
+        map.push('fig', 'kiwi');
+        expect(map.removeByKey(4)).toEqual(['kiwi']);
+        expect(map.holeCount).toBe(1);
+
+        expect(map.compact()).toBe(1);
+        expect(map.holeCount).toBe(0);
+
+        expect(map.removeAt(0)).toBe('apple');
+        expect(map.holeCount).toBe(1);
+
+        map.rebuild(['aa', 'bbb']);
+        expect(map.holeCount).toBe(0);
+
+        expect(map.removeAt(1)).toBe('bbb');
+        expect(map.holeCount).toBe(1);
+        map.clear();
+        expect(map.holeCount).toBe(0);
+    });
+
+    it('should remove only count items with removeByKey(key, undefined, count)', () => {
+        const map = new MultiItemMappedArray<number, string>(
+            (v) => v.length,
+            () => new SparseArray<string>(),
+            ['a', 'bb', 'cc', 'ddd', 'ee'],
+        );
+
+        expect(map.removeByKey(2, undefined, 2)).toEqual(['ee', 'cc']);
+        expect([...map.forwardIter()]).toEqual(['a', 'bb', 'ddd']);
+        expect([...map.forwardIter(2)]).toEqual(['bb']);
+        expect(map.holeCount).toBe(2);
+        expect(map.size).toBe(3);
+    });
+
+    it('should do nothing when removeByKey is called with a zero count', () => {
+        const map = createTestMap();
+
+        expect(map.removeByKey(6, undefined, 0)).toEqual([]);
+        expect(map.removeByKey(6, 1, 0)).toBe(VOID);
+        expect(map.holeCount).toBe(0);
+        expect(map.size).toBe(4);
+        expect([...map.forwardIter()]).toEqual(['apple', 'banana', 'cherry', 'date']);
+    });
 });

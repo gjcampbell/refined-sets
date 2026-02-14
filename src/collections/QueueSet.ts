@@ -24,7 +24,7 @@ export class QueueSet<T> extends BaseOrderedSet<T> {
         return undefined;
     }
 
-    /** Peeks at the earliest inserted value without removing it. */
+    /** Peeks at the earliest inserted, still queued value without removing it. */
     public peek(): T | undefined {
         for (const value of this) {
             return value;

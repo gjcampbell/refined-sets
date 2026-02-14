@@ -9,7 +9,7 @@ interface IKeyExtractor<V, K> {
 export interface IMapArray<K, V> extends IArray<V> {
     containsKey(key: K): boolean;
     containsValue(value: V): boolean;
-    removeByKey(key: K, index?: number): typeof index extends number ? V | typeof VOID : V[];
+    removeByKey(key: K, index?: number, count?: number): V[] | V | typeof VOID;
     rebuild(items: Iterable<V>): void;
     forwardIter(key?: K): IterableIterator<V>;
     reverseIter(key?: K): IterableIterator<V>;
@@ -50,6 +50,7 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
 
     private values: IArray<V>;
     private _size: number = 0;
+    private _holeCount: number = 0;
 
     private get storageLength(): number {
         return (this.values as unknown as { length: number }).length;
@@ -61,6 +62,9 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
 
     public get size(): number {
         return this._size;
+    }
+    public get holeCount(): number {
+        return this._holeCount;
     }
 
     public readonly keyExtractor: IKeyExtractor<V, K>;
@@ -79,26 +83,30 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
         this.values = this.valueArrayCtor();
         this.indexMap.clear();
         this._size = 0;
+        this._holeCount = 0;
     }
     public removeAt(index: number): V | typeof VOID {
         const value = this.values.getAt(index);
         if (value !== VOID) {
             const key = this.keyExtractor(value);
-            return this.removeByKey(key, index);
+            return this.removeByKey(key, index, 1);
         }
         return value;
     }
 
     public removeByKey(key: K): V[];
     public removeByKey(key: K, index: number): V | typeof VOID;
-    public removeByKey(key: K, index?: number) {
+    public removeByKey(key: K, index: number, count: number): V | typeof VOID;
+    public removeByKey(key: K, index: undefined, count: number): V[];
+    public removeByKey(key: K, index?: number, count?: number) {
         const indexSet = this.indexMap.get(key);
         if (index !== undefined) {
             let result: V | typeof VOID = VOID;
-            if (indexSet && indexSet.remove(index) > 0) {
+            if (indexSet && indexSet.remove(index) > 0 && (count === undefined || count > 0)) {
                 result = this.values.removeAt(index);
                 if (result !== VOID) {
                     this._size--;
+                    this._holeCount++;
                     if (this.isIndexSetEmpty(indexSet)) {
                         this.indexMap.delete(key);
                     }
@@ -106,21 +114,38 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
             }
             return result;
         } else {
-            return this.removeByKeyInternal(key, indexSet);
+            return this.removeByKeyInternal(key, indexSet, count);
         }
     }
 
-    private removeByKeyInternal(key: K, indexSet: undefined | IKeyIndices) {
+    private removeByKeyInternal(key: K, indexSet: undefined | IKeyIndices, count?: number) {
         const result: V[] = [];
-        if (indexSet) {
-            this.indexMap.delete(key);
-            for (const idx of indexSet.reverseIter()) {
-                const value = this.values.removeAt(idx);
-                if (value !== VOID) {
-                    result.push(value);
-                    this._size--;
-                }
+        if (!indexSet) {
+            return result;
+        }
+
+        const limit = count === undefined ? Number.POSITIVE_INFINITY : Math.max(0, count);
+        if (limit === 0) {
+            return result;
+        }
+
+        for (const idx of indexSet.reverseIter()) {
+            if (result.length >= limit) {
+                break;
             }
+            if (indexSet.remove(idx) <= 0) {
+                continue;
+            }
+
+            const value = this.values.removeAt(idx);
+            if (value !== VOID) {
+                result.push(value);
+                this._size--;
+                this._holeCount++;
+            }
+        }
+        if (this.isIndexSetEmpty(indexSet)) {
+            this.indexMap.delete(key);
         }
         return result;
     }
@@ -143,26 +168,27 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
             return undefined;
         }
 
-        while (true) {
-            const value = this.values.pop() as V | typeof VOID | undefined;
-            if (value === undefined) {
-                return undefined;
-            }
-            if (value === VOID) {
-                continue;
-            }
-
-            const key = this.keyExtractor(value);
-            const indexSet = this.indexMap.get(key);
-            if (indexSet) {
-                indexSet.remove(this.storageLength);
-                if (this.isIndexSetEmpty(indexSet)) {
-                    this.indexMap.delete(key);
-                }
-            }
-            this._size--;
-            return value;
+        const previousStorageLength = this.storageLength;
+        const value = this.values.pop() as V | typeof VOID | undefined;
+        if (value === undefined || value === VOID) {
+            return undefined;
         }
+
+        const removedStorageSlots = previousStorageLength - this.storageLength;
+        if (removedStorageSlots > 1) {
+            this._holeCount = Math.max(0, this._holeCount - (removedStorageSlots - 1));
+        }
+
+        const key = this.keyExtractor(value);
+        const indexSet = this.indexMap.get(key);
+        if (indexSet) {
+            indexSet.remove(this.storageLength);
+            if (this.isIndexSetEmpty(indexSet)) {
+                this.indexMap.delete(key);
+            }
+        }
+        this._size--;
+        return value;
     }
 
     public containsKey(key: K): boolean {
@@ -182,6 +208,18 @@ export class MultiItemMappedArray<K, V> implements IMapArray<K, V> {
             this.values.push(item);
         }
         this._size = this.values.size;
+        this._holeCount = 0;
+    }
+
+    public compact(): number {
+        const removedHoles = this.holeCount;
+        if (removedHoles <= 0) {
+            return 0;
+        }
+
+        const snapshot = Array.from(this.forwardIter());
+        this.rebuild(snapshot);
+        return removedHoles;
     }
 
     private addToIndexSet(value: V, idx: number) {

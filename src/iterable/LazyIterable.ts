@@ -216,7 +216,6 @@ export abstract class LazyIterable<T> implements Iterable<T> {
      * @returns The first element, or undefined if the sequence is empty.
      */
     public entries(): ILazyIterable<[number, T]> {
-        const self = this;
         return this.extend(function* genEntries(self): IterableIterator<[number, T]> {
             let index = 0;
             for (const x of self) {

@@ -21,24 +21,23 @@ export const enum CompactionMode {
 
 export interface BaseOrderedSetOptions<T = unknown, K = T> {
     /**
-     * Compaction strategy to use for managing holes in the set.
-     * Defaults to `CompactionMode.Auto`.
+     * Selects when hole compaction runs.
+     * Defaults to `CompactionMode.Auto`, balancing remove and iteration costs.
      */
     compaction?: CompactionMode;
     /**
-     * Maximum number of holes before compaction is triggered.
-     * Defaults to 256, or can be set via `thresholdBytes`.
+     * Sets the hole-count threshold used by auto compaction.
+     * Defaults to 256 and is ignored when `thresholdBytes` is provided.
      */
     holeThreshold?: number;
     /**
-     * Optional threshold in bytes to trigger compaction.
-     * If set, overrides `holeThreshold` based on estimated size of holes.
-     * Defaults to no threshold.
+     * Sets an approximate hole-memory threshold for auto compaction.
+     * When provided, this overrides `holeThreshold` via an internal bytes-per-hole estimate.
      */
     thresholdBytes?: number;
     /**
-     * Whether to deduplicate values when adding to the set.
-     * Defaults to true, meaning duplicate values are ignored.
+     * Controls whether repeated values are ignored on add.
+     * Defaults to `true`; when `false`, duplicates are retained and removals can be count-limited.
      */
     deduplicate?: boolean;
     /**
@@ -49,24 +48,22 @@ export interface BaseOrderedSetOptions<T = unknown, K = T> {
 }
 
 /**
- * An ordered set that maintains insertion order and allows for efficient
- * removal of elements while minimizing memory overhead.
- *
- * This implementation uses a sparse array plus index map:
- * values are removed by marking holes and compaction can run based on policy.
+ * Shared ordered-set base class with pluggable compaction behavior.
+ * Uses sparse storage plus key-index mapping to preserve insertion order while keeping lookup and remove paths O(1) average-time.
+ * Deletions create holes; compaction policy controls when those holes are reclaimed.
  */
 export abstract class BaseOrderedSet<T, K = T> extends LazyIterable<T> {
     private static readonly EST_BYTES_PER_HOLE = 8;
 
-    private readonly items: MultiItemMappedArray<K, T>;
+    protected readonly items: MultiItemMappedArray<T, T>;
     private readonly deduplicate: boolean;
     private readonly keyExtractor: (value: T) => K;
 
-    private readonly compactBeforeIter: boolean;
-    private readonly compactAfterIter: boolean;
-    private readonly compactOnRemove: boolean;
-    private readonly compactAuto: boolean;
-    private readonly holeThreshold: number;
+    protected readonly compactBeforeIter: boolean;
+    protected readonly compactAfterIter: boolean;
+    protected readonly compactOnRemove: boolean;
+    protected readonly compactAuto: boolean;
+    protected readonly holeThreshold: number;
 
     public constructor(initial?: Iterable<T>, opts: BaseOrderedSetOptions<T, K> = {}) {
         super();
@@ -97,14 +94,18 @@ export abstract class BaseOrderedSet<T, K = T> extends LazyIterable<T> {
     }
 
     /**
-     * Checks if the set contains a value.
+     * Returns whether at least one matching value exists.
      * @param value - The value to check for presence.
-     * @return true if the value is present, false otherwise.
+     * @returns `true` when present, otherwise `false`.
      */
     public has(value: T): boolean {
         return this.items.containsKey(this.keyExtractor(value));
     }
 
+    /**
+     * Adds a value according to deduplication mode.
+     * O(1) average-time. When deduplication is enabled, existing values are not reinserted.
+     */
     protected addInternal(value: T): this {
         const key = this.keyExtractor(value);
         if (!this.deduplicate || !this.items.containsKey(key)) {
@@ -113,7 +114,10 @@ export abstract class BaseOrderedSet<T, K = T> extends LazyIterable<T> {
         return this;
     }
 
-    /** Removes any value from the set. Returns true if removal occurred. */
+    /**
+     * Removes matching value(s) from the set.
+     * O(1) average-time per removed item. In deduplicated mode, `count` is ignored; in non-deduplicated mode, `count` limits removals.
+     */
     protected removeInternal(value: T, count?: number): boolean {
         let removed = false;
         const key = this.keyExtractor(value);
@@ -133,6 +137,29 @@ export abstract class BaseOrderedSet<T, K = T> extends LazyIterable<T> {
         return removed;
     }
 
+    /**
+     * Returns the most recently inserted live value.
+     * O(1) average-time excluding compaction. In eager and auto-pre-iter paths, compaction may run before read.
+     */
+    protected getLastInternal(): T | undefined {
+        if (this.compactBeforeIter || (this.compactAuto && this.shouldCompact())) {
+            this.compact();
+        }
+        return this.items.reverseIter().next().value;
+    }
+
+    /**
+     * Removes and returns the most recently inserted live value.
+     * O(1) average-time excluding compaction. Removal-triggered compaction follows configured policy.
+     */
+    protected removeLastInternal(): T | undefined {
+        const removed = this.items.pop();
+        if (removed !== undefined && (this.compactOnRemove || (this.compactAuto && this.shouldCompact()))) {
+            this.compact();
+        }
+        return removed;
+    }
+
     private *iterate(): IterableIterator<T> {
         if (this.compactBeforeIter || (this.compactAuto && this.shouldCompact())) {
             this.compact();
@@ -145,25 +172,38 @@ export abstract class BaseOrderedSet<T, K = T> extends LazyIterable<T> {
         }
     }
 
-    /** Returns an immutable snapshot iterator (unaffected by later mutations). */
+    /**
+     * Returns an immutable snapshot iterator.
+     * Snapshot contents are fixed at creation time and are unaffected by later mutations.
+     */
     public *snapshotIterator(): IterableIterator<T> {
         const snapshot = Array.from(this.items.forwardIter());
         yield* snapshot;
     }
 
-    /** Rebuilds the underlying array and index map, removing holes. */
+    /**
+     * Rebuilds storage and index mappings without holes.
+     * O(n) over live elements and preserves current iteration order.
+     */
     public compact(): this {
         this.items.compact();
         return this;
     }
 
+    /**
+     * Removes all values and hole bookkeeping.
+     * O(1) with fresh backing storage allocation.
+     */
     public clear(): this {
         this.items.clear();
         return this;
     }
 
-    /** Determines whether compaction should be triggered (auto mode). */
-    private shouldCompact(): boolean {
+    /**
+     * Returns whether auto compaction threshold has been reached.
+     * Uses internal hole-count tracking against the configured threshold.
+     */
+    protected shouldCompact(): boolean {
         return this.items.holeCount >= this.holeThreshold;
     }
 }

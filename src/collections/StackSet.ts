@@ -4,8 +4,8 @@ import { BaseOrderedSet, BaseOrderedSetOptions } from './BaseOrderedSet';
  * StackSet – A LIFO stack with set semantics.
  * Pushes only unique values and pops the most recent.
  */
-export class StackSet<T> extends BaseOrderedSet<T> {
-    public constructor(initial?: Iterable<T>, options?: BaseOrderedSetOptions) {
+export class StackSet<T, K = T> extends BaseOrderedSet<T, K> {
+    public constructor(initial?: Iterable<T>, options?: BaseOrderedSetOptions<T, K>) {
         super(initial, options);
     }
 

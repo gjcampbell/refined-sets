@@ -1,7 +1,7 @@
 import { BaseOrderedSet, BaseOrderedSetOptions, CompactionMode } from '../src/collections/BaseOrderedSet';
 
-class TestOrderedSet<T> extends BaseOrderedSet<T> {
-    public constructor(initial?: Iterable<T>, options?: BaseOrderedSetOptions) {
+class TestOrderedSet<T, K = T> extends BaseOrderedSet<T, K> {
+    public constructor(initial?: Iterable<T>, options?: BaseOrderedSetOptions<T, K>) {
         super(initial, options);
     }
 
@@ -125,5 +125,42 @@ describe('BaseOrderedSet', () => {
 
         expect([...snapshot]).toEqual([2, 3]);
         expect([...set]).toEqual([1, 3, 4]);
+    });
+
+    it('should use keyExtractor for dedupe and has/remove lookups', () => {
+        type User = { id: number; name: string };
+        const set = new TestOrderedSet<User, number>(
+            [
+                { id: 1, name: 'alpha-v1' },
+                { id: 1, name: 'alpha-v2' },
+                { id: 2, name: 'bravo' },
+            ],
+            { keyExtractor: (x) => x.id },
+        );
+
+        expect([...set]).toEqual([
+            { id: 1, name: 'alpha-v1' },
+            { id: 2, name: 'bravo' },
+        ]);
+        expect(set.has({ id: 1, name: 'anything' })).toBe(true);
+        expect(set.has({ id: 9, name: 'missing' })).toBe(false);
+        expect(set.remove({ id: 1, name: 'temp' })).toBe(true);
+        expect([...set]).toEqual([{ id: 2, name: 'bravo' }]);
+    });
+
+    it('should remove by key with count when deduplicate is false and keyExtractor is provided', () => {
+        type User = { id: number; rev: number };
+        const set = new TestOrderedSet<User, number>(
+            [
+                { id: 1, rev: 1 },
+                { id: 1, rev: 2 },
+                { id: 1, rev: 3 },
+                { id: 2, rev: 1 },
+            ],
+            { deduplicate: false, compaction: CompactionMode.Manual, keyExtractor: (x) => x.id },
+        );
+
+        expect(set.removeCount({ id: 1, rev: 999 }, 2)).toBe(true);
+        expect([...set]).toEqual([{ id: 1, rev: 1 }, { id: 2, rev: 1 }]);
     });
 });

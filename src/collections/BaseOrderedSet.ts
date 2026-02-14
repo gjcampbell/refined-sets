@@ -19,7 +19,7 @@ export const enum CompactionMode {
     Manual = 'manual',
 }
 
-export interface BaseOrderedSetOptions {
+export interface BaseOrderedSetOptions<T = unknown, K = T> {
     /**
      * Compaction strategy to use for managing holes in the set.
      * Defaults to `CompactionMode.Auto`.
@@ -41,6 +41,11 @@ export interface BaseOrderedSetOptions {
      * Defaults to true, meaning duplicate values are ignored.
      */
     deduplicate?: boolean;
+    /**
+     * Optional key extractor used to derive keys from values for indexing.
+     * Defaults to identity (`(value) => value`).
+     */
+    keyExtractor?: (value: T) => K;
 }
 
 /**
@@ -50,11 +55,12 @@ export interface BaseOrderedSetOptions {
  * This implementation uses a sparse array plus index map:
  * values are removed by marking holes and compaction can run based on policy.
  */
-export abstract class BaseOrderedSet<T> extends LazyIterable<T> {
+export abstract class BaseOrderedSet<T, K = T> extends LazyIterable<T> {
     private static readonly EST_BYTES_PER_HOLE = 8;
 
-    private readonly items: MultiItemMappedArray<T, T>;
+    private readonly items: MultiItemMappedArray<K, T>;
     private readonly deduplicate: boolean;
+    private readonly keyExtractor: (value: T) => K;
 
     private readonly compactBeforeIter: boolean;
     private readonly compactAfterIter: boolean;
@@ -62,7 +68,7 @@ export abstract class BaseOrderedSet<T> extends LazyIterable<T> {
     private readonly compactAuto: boolean;
     private readonly holeThreshold: number;
 
-    public constructor(initial?: Iterable<T>, opts: BaseOrderedSetOptions = {}) {
+    public constructor(initial?: Iterable<T>, opts: BaseOrderedSetOptions<T, K> = {}) {
         super();
 
         const mode = opts.compaction ?? CompactionMode.Auto;
@@ -71,15 +77,13 @@ export abstract class BaseOrderedSet<T> extends LazyIterable<T> {
         this.compactAfterIter = mode === CompactionMode.Lazy;
         this.compactAuto = mode === CompactionMode.Auto;
         this.deduplicate = opts.deduplicate ?? true;
-        this.items = new MultiItemMappedArray<T, T>(
-            (value) => value,
-            () => new SparseArray<T>(),
-        );
+        this.keyExtractor = (opts.keyExtractor as ((value: T) => K) | undefined) ?? ((value: T) => value as unknown as K);
+        this.items = new MultiItemMappedArray<K, T>(this.keyExtractor, () => new SparseArray<T>());
 
         this.holeThreshold =
-            opts.thresholdBytes && opts.thresholdBytes > 0
-                ? Math.ceil(opts.thresholdBytes / BaseOrderedSet.EST_BYTES_PER_HOLE)
-                : Math.max(1, opts.holeThreshold ?? 256);
+            opts.thresholdBytes && opts.thresholdBytes > 0 ?
+                Math.ceil(opts.thresholdBytes / BaseOrderedSet.EST_BYTES_PER_HOLE)
+            :   Math.max(1, opts.holeThreshold ?? 256);
 
         if (initial) {
             for (const value of initial) {
@@ -98,11 +102,12 @@ export abstract class BaseOrderedSet<T> extends LazyIterable<T> {
      * @return true if the value is present, false otherwise.
      */
     public has(value: T): boolean {
-        return this.items.containsKey(value);
+        return this.items.containsKey(this.keyExtractor(value));
     }
 
     protected addInternal(value: T): this {
-        if (!this.deduplicate || !this.items.containsKey(value)) {
+        const key = this.keyExtractor(value);
+        if (!this.deduplicate || !this.items.containsKey(key)) {
             this.items.push(value);
         }
         return this;
@@ -111,13 +116,14 @@ export abstract class BaseOrderedSet<T> extends LazyIterable<T> {
     /** Removes any value from the set. Returns true if removal occurred. */
     protected removeInternal(value: T, count?: number): boolean {
         let removed = false;
+        const key = this.keyExtractor(value);
 
         if (this.deduplicate) {
-            removed = this.items.removeByKey(value).length > 0;
+            removed = this.items.removeByKey(key).length > 0;
         } else if (count === undefined) {
-            removed = this.items.removeByKey(value).length > 0;
+            removed = this.items.removeByKey(key).length > 0;
         } else {
-            removed = this.items.removeByKey(value, undefined, count).length > 0;
+            removed = this.items.removeByKey(key, undefined, count).length > 0;
         }
 
         if (this.compactOnRemove || (this.compactAuto && this.shouldCompact())) {

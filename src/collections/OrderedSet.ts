@@ -8,12 +8,12 @@ import { BaseOrderedSet, BaseOrderedSetOptions } from './BaseOrderedSet';
  * without disrupting iteration order. Compaction is handled
  * automatically or manually based on configuration.
  */
-export class OrderedSet<T> extends BaseOrderedSet<T> {
+export class OrderedSet<T, K = T> extends BaseOrderedSet<T, K> {
     /**
      * Creates a new OrderedSet.
      * @param options Optional compaction strategy and thresholds.
      */
-    public constructor(initial?: Iterable<T>, options?: BaseOrderedSetOptions) {
+    public constructor(initial?: Iterable<T>, options?: BaseOrderedSetOptions<T, K>) {
         super(initial, options);
     }
 

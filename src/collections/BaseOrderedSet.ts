@@ -55,7 +55,7 @@ export interface BaseOrderedSetOptions<T = unknown, K = T> {
 export abstract class BaseOrderedSet<T, K = T> extends LazyIterable<T> {
     private static readonly EST_BYTES_PER_HOLE = 8;
 
-    protected readonly items: MultiItemMappedArray<T, T>;
+    protected readonly items: MultiItemMappedArray<K, T>;
     private readonly deduplicate: boolean;
     private readonly keyExtractor: (value: T) => K;
 

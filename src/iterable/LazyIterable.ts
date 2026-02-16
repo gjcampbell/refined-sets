@@ -272,12 +272,15 @@ export abstract class LazyIterable<T> implements Iterable<T> {
     /**
      * Yield deduplicated elements, optionally based on a key.
      *
-     * @param predicate Function invoked on each element.
-     * @returns The index of the first matching element, or -1 if none matched.
+     * If `distinctBy` is not provided, elements themselves are used for deduplication. Otherwise, the provided function is used to extract a key for each element, and keys are used for deduplication.
+     * @param distinctBy Optional function to extract a key for deduplication. If not provided, elements themselves are used as keys.
+     * @returns A new ILazyIterable containing only distinct elements.
      */
-    public distinct(distinctBy?: (item: T) => any): ILazyIterable<T> {
-        distinctBy ??= (x: T) => x;
-        return this.extend(function* genDistint(self) {
+    public distinct(): ILazyIterable<T>;
+    public distinct<K>(distinctBy: (item: T) => K): ILazyIterable<T>;
+    public distinct<K>(distinctBy?: (item: T) => K): ILazyIterable<T> {
+        distinctBy ??= (x: T) => x as unknown as K;
+        return this.extend(function* genDistinct(self) {
             const seen = new Set();
             for (const x of self) {
                 const key = distinctBy!(x);
@@ -285,6 +288,91 @@ export abstract class LazyIterable<T> implements Iterable<T> {
                     seen.add(key);
                     yield x;
                 }
+            }
+        });
+    }
+
+    /**
+     * Lazily groups elements by a selected key.
+     * Outer iteration yields groups in first-key-seen order. Inner iteration yields each group's values in source order.
+     * Source values are only pulled as needed while consuming group keys or group values.
+     * Any incidentally scanned values/groups are buffered and reused across subsequent iterations.
+     *
+     * @template K Type of the grouping key.
+     * @param keySelector Function to derive a key for each element.
+     * @returns A lazy sequence of [key, grouped values] pairs.
+     */
+    public groupBy<K>(keySelector: (item: T, index: number) => K): ILazyIterable<[K, ILazyIterable<T>]> {
+        return this.extend(function* genGroupBy(self) {
+            type GroupState = {
+                key: K;
+                values: T[];
+                iterable: ILazyIterable<T>;
+            };
+
+            const source = self[Symbol.iterator]();
+            const groupsByKey = new Map<K, GroupState>();
+            const groupsInOrder: GroupState[] = [];
+            let sourceDone = false;
+            let sourceIndex = 0;
+
+            const pullNextSource = (): boolean => {
+                if (sourceDone) {
+                    return false;
+                }
+
+                const next = source.next();
+                if (next.done) {
+                    sourceDone = true;
+                    return false;
+                }
+
+                const item = next.value;
+                const key = keySelector(item, sourceIndex++);
+                let state = groupsByKey.get(key);
+                if (!state) {
+                    const values: T[] = [];
+                    state = {
+                        key,
+                        values,
+                        iterable: new LazyIterable.LazyIterableImpl<T>(function* genGroupValues() {
+                            let valueIndex = 0;
+
+                            while (true) {
+                                if (valueIndex < values.length) {
+                                    yield values[valueIndex++];
+                                    continue;
+                                }
+
+                                while (!sourceDone && valueIndex >= values.length) {
+                                    pullNextSource();
+                                }
+
+                                if (valueIndex >= values.length) {
+                                    break;
+                                }
+                            }
+                        }),
+                    };
+                    groupsByKey.set(key, state);
+                    groupsInOrder.push(state);
+                }
+
+                state.values.push(item);
+                return true;
+            };
+
+            const ensureGroupAtIndex = (groupIndex: number): boolean => {
+                while (groupsInOrder.length <= groupIndex && !sourceDone) {
+                    pullNextSource();
+                }
+                return groupsInOrder.length > groupIndex;
+            };
+
+            let groupIndex = 0;
+            while (ensureGroupAtIndex(groupIndex)) {
+                const state = groupsInOrder[groupIndex++];
+                yield [state.key, state.iterable];
             }
         });
     }

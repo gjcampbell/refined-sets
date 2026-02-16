@@ -188,6 +188,76 @@ describe('LazyIterable', () => {
         expect(result).toEqual([1, 2]);
     });
 
+    test('should be able to lazily group values by key selector', () => {
+        const iterable = LazyIterable.from([1, 2, 3, 4, 5, 6]);
+        const groups = iterable.groupBy((value) => value % 2);
+        const result = groups.map(([key, values]) => [key, values.toArray()]).toArray();
+
+        expect(result).toEqual([
+            [1, [1, 3, 5]],
+            [0, [2, 4, 6]],
+        ]);
+    });
+
+    test('groupBy should not enumerate until groups or values are consumed', () => {
+        const iterable = new TrackedTestIterable([1, 2, 3, 4, 5]);
+        const groups = iterable.groupBy((value) => value % 2);
+
+        expect(iterable.itemsYielded).toBe(0);
+
+        const firstGroup = groups.first();
+        expect(firstGroup?.[0]).toBe(1);
+        expect(iterable.itemsYielded).toBe(1);
+    });
+
+    test('groupBy should buffer incidentally discovered groups and values', () => {
+        const iterable = new TrackedTestIterable(['a1', 'b1', 'a2', 'c1', 'b2']);
+        const groups = iterable.groupBy((value) => value[0]);
+        const groupIterator = groups[Symbol.iterator]();
+
+        const first = groupIterator.next().value;
+        expect(first?.[0]).toBe('a');
+        expect(iterable.itemsYielded).toBe(1);
+
+        const aValues = first?.[1].take(2).toArray();
+        expect(aValues).toEqual(['a1', 'a2']);
+        expect(iterable.itemsYielded).toBe(3);
+
+        const second = groupIterator.next().value;
+        expect(second?.[0]).toBe('b');
+        expect(iterable.itemsYielded).toBe(3);
+        expect(second?.[1].first()).toBe('b1');
+        expect(iterable.itemsYielded).toBe(3);
+
+        expect(second?.[1].toArray()).toEqual(['b1', 'b2']);
+        expect(iterable.itemsYielded).toBe(5);
+
+        const third = groupIterator.next().value;
+        expect(third?.[0]).toBe('c');
+        expect(third?.[1].toArray()).toEqual(['c1']);
+        expect(iterable.itemsYielded).toBe(5);
+    });
+
+    test('groupBy should provide item index to the key selector', () => {
+        const selector = jest.fn((_: number, index: number) => (index < 3 ? 'head' : 'tail'));
+        const iterable = LazyIterable.from([10, 20, 30, 40, 50]);
+        const groups = iterable.groupBy(selector);
+        const result = groups.map(([key, values]) => [key, values.toArray()]).toArray();
+
+        expect(result).toEqual([
+            ['head', [10, 20, 30]],
+            ['tail', [40, 50]],
+        ]);
+        expect(selector).toHaveBeenCalledTimes(5);
+        expect(selector.mock.calls).toEqual([
+            [10, 0],
+            [20, 1],
+            [30, 2],
+            [40, 3],
+            [50, 4],
+        ]);
+    });
+
     test('should be able to count number of items', () => {
         const iterable = LazyIterable.fromLength(10);
 

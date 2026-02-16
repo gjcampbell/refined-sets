@@ -337,6 +337,139 @@ describe('LazyIterable', () => {
         expect(callback).toHaveBeenCalledTimes(4);
     });
 
+    test('union should de-duplicate with default set semantics, including NaN', () => {
+        const result = LazyIterable.from([1, NaN, NaN, 2]).union([NaN, 3, 2]).toArray();
+        expect(result).toEqual([1, NaN, 2, 3]);
+    });
+
+    test('union should preserve object reference identity by default', () => {
+        const shared = { id: 1 };
+        const leftOnly = { id: 1 };
+        const rightOnly = { id: 1 };
+
+        const result = LazyIterable.from([shared, leftOnly]).union([shared, rightOnly]).toArray();
+        expect(result).toEqual([shared, leftOnly, rightOnly]);
+    });
+
+    test('union should support keyExtractor semantics and stable first-seen ordering', () => {
+        const left = [{ id: 1, value: 'L1' }, { id: 2, value: 'L2' }, { id: 2, value: 'L2-dup' }];
+        const right = [{ id: 2, value: 'R2' }, { id: 3, value: 'R3' }];
+
+        const result = LazyIterable.from(left)
+            .union(right, { keyExtractor: (item) => item.id })
+            .toArray();
+
+        expect(result).toEqual([
+            { id: 1, value: 'L1' },
+            { id: 2, value: 'L2' },
+            { id: 3, value: 'R3' },
+        ]);
+    });
+
+    test('intersection should support equalityComparer semantics', () => {
+        const left = [{ id: 1, label: 'A' }, { id: 2, label: 'B' }, { id: 2, label: 'B2' }, { id: 3, label: 'C' }];
+        const right = [{ id: 2, label: 'R2' }, { id: 4, label: 'R4' }];
+
+        const result = LazyIterable.from(left)
+            .intersection(right, { equalityComparer: (a, b) => a.id === b.id })
+            .toArray();
+
+        expect(result).toEqual([{ id: 2, label: 'B' }]);
+    });
+
+    test('difference should support keyExtractor semantics', () => {
+        const left = [{ id: 1 }, { id: 2 }, { id: 2 }, { id: 3 }];
+        const right = [{ id: 2 }, { id: 4 }];
+
+        const result = LazyIterable.from(left)
+            .difference(right, { keyExtractor: (item) => item.id })
+            .toArray();
+
+        expect(result).toEqual([{ id: 1 }, { id: 3 }]);
+    });
+
+    test('symmetricDifference should emit left-unique then right-unique values', () => {
+        const left = [1, 2, 2, 3, 5];
+        const right = [2, 4, 4, 5, 6];
+
+        const result = LazyIterable.from(left).symmetricDifference(right).toArray();
+        expect(result).toEqual([1, 3, 4, 6]);
+    });
+
+    test('set operations should reject conflicting keyExtractor and equalityComparer options', () => {
+        const opts = {
+            keyExtractor: (item: { id: number }) => item.id,
+            equalityComparer: (a: { id: number }, b: { id: number }) => a.id === b.id,
+        };
+
+        expect(() => LazyIterable.from([{ id: 1 }]).union([{ id: 1 }], opts as any)).toThrow('cannot include both keyExtractor and equalityComparer');
+        expect(() => LazyIterable.from([{ id: 1 }]).intersection([{ id: 1 }], opts as any)).toThrow('cannot include both keyExtractor and equalityComparer');
+        expect(() => LazyIterable.from([{ id: 1 }]).difference([{ id: 1 }], opts as any)).toThrow('cannot include both keyExtractor and equalityComparer');
+        expect(() => LazyIterable.from([{ id: 1 }]).symmetricDifference([{ id: 1 }], opts as any)).toThrow(
+            'cannot include both keyExtractor and equalityComparer',
+        );
+    });
+
+    test('sort should support key accessor ascending', () => {
+        const result = LazyIterable.from([4, 1, 3, 2])
+            .sort({ sortKeyAccessor: (item) => item })
+            .toArray();
+        expect(result).toEqual([1, 2, 3, 4]);
+    });
+
+    test('sort should support multiple directives', () => {
+        const items = [
+            { category: 'b', value: 2 },
+            { category: 'a', value: 3 },
+            { category: 'a', value: 1 },
+            { category: 'b', value: 1 },
+        ];
+
+        const result = LazyIterable.from(items)
+            .sort(
+                { sortKeyAccessor: (item) => item.category },
+                { sortKeyAccessor: (item) => item.value },
+            )
+            .toArray();
+
+        expect(result).toEqual([
+            { category: 'a', value: 1 },
+            { category: 'a', value: 3 },
+            { category: 'b', value: 1 },
+            { category: 'b', value: 2 },
+        ]);
+    });
+
+    test('sort should support direct comparer and descending', () => {
+        const result = LazyIterable.from(['aaa', 'b', 'cc'])
+            .sort(
+                { comparer: (a: string, b: string) => a.length - b.length, descending: true },
+                { sortKeyAccessor: (item) => item },
+            )
+            .toArray();
+
+        expect(result).toEqual(['aaa', 'cc', 'b']);
+    });
+
+    test('sort should be stable when directives consider values equal', () => {
+        const items = [
+            { id: 1, group: 'x' },
+            { id: 2, group: 'x' },
+            { id: 3, group: 'x' },
+        ];
+
+        const result = LazyIterable.from(items)
+            .sort({ sortKeyAccessor: (item) => item.group })
+            .map((item) => item.id)
+            .toArray();
+
+        expect(result).toEqual([1, 2, 3]);
+    });
+
+    test('sort should throw when no directives are provided', () => {
+        expect(() => LazyIterable.from([3, 1, 2]).sort()).toThrow('at least one sort directive');
+    });
+
     test('should be able to create an iterable that yields indefinitely', () => {
         const stopAfter = 2 ** 20 - 1;
         const result = LazyIterable.infinite()

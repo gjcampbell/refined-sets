@@ -1,6 +1,51 @@
 import { RefinedSetsError } from '../errors/RefinedSetsError';
 
-interface ILazyIterable<T> extends LazyIterable<T> {}
+export type SetOpOptions<T, K = unknown> = {
+    keyExtractor?: (item: T) => K;
+    equalityComparer?: (a: T, b: T) => boolean;
+};
+
+export type SortDirective<T, S = unknown> =
+    | {
+          sortKeyAccessor: (item: T) => S;
+          comparer?: (a: S, b: S) => number;
+          descending?: boolean;
+      }
+    | {
+          comparer: (a: T, b: T) => number;
+          descending?: boolean;
+      };
+
+export interface ILazyIterable<T> extends LazyIterable<T> {
+    union(other: Iterable<T>): ILazyIterable<T>;
+    union<K>(other: Iterable<T>, opts: { keyExtractor: (item: T) => K }): ILazyIterable<T>;
+    union(other: Iterable<T>, opts: { equalityComparer: (a: T, b: T) => boolean }): ILazyIterable<T>;
+
+    intersection(other: Iterable<T>): ILazyIterable<T>;
+    intersection<K>(other: Iterable<T>, opts: { keyExtractor: (item: T) => K }): ILazyIterable<T>;
+    intersection(other: Iterable<T>, opts: { equalityComparer: (a: T, b: T) => boolean }): ILazyIterable<T>;
+
+    difference(other: Iterable<T>): ILazyIterable<T>;
+    difference<K>(other: Iterable<T>, opts: { keyExtractor: (item: T) => K }): ILazyIterable<T>;
+    difference(other: Iterable<T>, opts: { equalityComparer: (a: T, b: T) => boolean }): ILazyIterable<T>;
+
+    symmetricDifference(other: Iterable<T>): ILazyIterable<T>;
+    symmetricDifference<K>(other: Iterable<T>, opts: { keyExtractor: (item: T) => K }): ILazyIterable<T>;
+    symmetricDifference(other: Iterable<T>, opts: { equalityComparer: (a: T, b: T) => boolean }): ILazyIterable<T>;
+
+    sort(...directives: Array<SortDirective<T, unknown>>): ILazyIterable<T>;
+}
+
+type EqualityStrategy<T, K> =
+    | { mode: 'default' }
+    | {
+          mode: 'key';
+          getKey: (item: T) => K;
+      }
+    | {
+          mode: 'comparer';
+          equals: (a: T, b: T) => boolean;
+      };
 
 /**
  * Represents a lazy-evaluated sequence.
@@ -25,6 +70,132 @@ export abstract class LazyIterable<T> implements Iterable<T> {
     };
 
     //#endregion
+
+    private static createEqualityStrategy<T, K>(opts?: SetOpOptions<T, K>): EqualityStrategy<T, K> {
+        if (!opts) {
+            return { mode: 'default' };
+        }
+
+        if (opts.keyExtractor && opts.equalityComparer) {
+            throw RefinedSetsError.invalidArgument('Set operation options cannot include both keyExtractor and equalityComparer.');
+        }
+
+        if (opts.keyExtractor) {
+            return {
+                mode: 'key',
+                getKey: opts.keyExtractor,
+            };
+        }
+
+        if (opts.equalityComparer) {
+            return {
+                mode: 'comparer',
+                equals: opts.equalityComparer,
+            };
+        }
+
+        return { mode: 'default' };
+    }
+
+    private static containsByComparer<T>(items: T[], target: T, equals: (a: T, b: T) => boolean): boolean {
+        for (let i = 0; i < items.length; i++) {
+            if (equals(items[i], target)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static normalizeComparerResult(value: number): number {
+        if (Number.isNaN(value) || value === 0) {
+            return 0;
+        }
+        return value < 0 ? -1 : 1;
+    }
+
+    private static compareSortKeys(a: unknown, b: unknown): number {
+        if (Object.is(a, b)) {
+            return 0;
+        }
+
+        if (a === null || a === undefined) {
+            return 1;
+        }
+        if (b === null || b === undefined) {
+            return -1;
+        }
+
+        if (typeof a === 'number' && typeof b === 'number') {
+            if (Number.isNaN(a) && Number.isNaN(b)) {
+                return 0;
+            }
+            if (Number.isNaN(a)) {
+                return 1;
+            }
+            if (Number.isNaN(b)) {
+                return -1;
+            }
+            return a < b ? -1 : 1;
+        }
+
+        if (typeof a === 'string' && typeof b === 'string') {
+            return a < b ? -1 : 1;
+        }
+
+        if (typeof a === 'bigint' && typeof b === 'bigint') {
+            return a < b ? -1 : 1;
+        }
+
+        if (a instanceof Date && b instanceof Date) {
+            const timeA = a.getTime();
+            const timeB = b.getTime();
+            return LazyIterable.normalizeComparerResult(timeA - timeB);
+        }
+
+        try {
+            if (a < b) {
+                return -1;
+            }
+            if (a > b) {
+                return 1;
+            }
+            return 0;
+        } catch {
+            return 0;
+        }
+    }
+
+    private static buildComparer<T>(directives: Array<SortDirective<T, unknown>>): (a: T, b: T) => number {
+        if (directives.length === 0) {
+            throw RefinedSetsError.invalidArgument('sort requires at least one sort directive.');
+        }
+
+        const comparers = directives.map((directive) => {
+            if ('sortKeyAccessor' in directive) {
+                const keyAccessor = directive.sortKeyAccessor;
+                const keyComparer = directive.comparer ?? ((a: unknown, b: unknown) => LazyIterable.compareSortKeys(a, b));
+                return (a: T, b: T): number => {
+                    const result = LazyIterable.normalizeComparerResult(keyComparer(keyAccessor(a), keyAccessor(b)));
+                    return directive.descending ? -result : result;
+                };
+            }
+
+            return (a: T, b: T): number => {
+                const result = LazyIterable.normalizeComparerResult(directive.comparer(a, b));
+                return directive.descending ? -result : result;
+            };
+        });
+
+        return (a: T, b: T): number => {
+            for (let i = 0; i < comparers.length; i++) {
+                const result = comparers[i](a, b);
+                if (result !== 0) {
+                    return result;
+                }
+            }
+            return 0;
+        };
+    }
 
     /**
      * Returns a fresh iterator over the sequence.
@@ -288,6 +459,333 @@ export abstract class LazyIterable<T> implements Iterable<T> {
                     seen.add(key);
                     yield x;
                 }
+            }
+        });
+    }
+
+    /**
+     * Yields unique values from this iterable followed by unique values from `other`, preserving first-seen order.
+     *
+     * Ordering is stable: values are emitted in the order they are first observed when scanning `this` and then `other`.
+     *
+     * Complexity:
+     * - default mode: O(n + m) expected using Set membership.
+     * - keyExtractor mode: O(n + m) expected using Set membership on extracted keys.
+     * - equalityComparer mode: O((n + m)^2) worst case due to linear membership scans.
+     *
+     * @param other Iterable of additional values.
+     * @param opts Optional equality strategy; `keyExtractor` and `equalityComparer` are mutually exclusive.
+     * @returns A lazy iterable of unioned values.
+     */
+    public union(other: Iterable<T>): ILazyIterable<T>;
+    public union<K>(other: Iterable<T>, opts: { keyExtractor: (item: T) => K }): ILazyIterable<T>;
+    public union(other: Iterable<T>, opts: { equalityComparer: (a: T, b: T) => boolean }): ILazyIterable<T>;
+    public union<K>(other: Iterable<T>, opts?: SetOpOptions<T, K>): ILazyIterable<T> {
+        const strategy = LazyIterable.createEqualityStrategy(opts);
+        return this.extend(function* genUnion(self) {
+            if (strategy.mode === 'key') {
+                const seenKeys = new Set<K>();
+                for (const item of self) {
+                    const key = strategy.getKey(item);
+                    if (!seenKeys.has(key)) {
+                        seenKeys.add(key);
+                        yield item;
+                    }
+                }
+                for (const item of other) {
+                    const key = strategy.getKey(item);
+                    if (!seenKeys.has(key)) {
+                        seenKeys.add(key);
+                        yield item;
+                    }
+                }
+                return;
+            }
+
+            if (strategy.mode === 'comparer') {
+                const seenItems: T[] = [];
+                for (const item of self) {
+                    if (!LazyIterable.containsByComparer(seenItems, item, strategy.equals)) {
+                        seenItems.push(item);
+                        yield item;
+                    }
+                }
+                for (const item of other) {
+                    if (!LazyIterable.containsByComparer(seenItems, item, strategy.equals)) {
+                        seenItems.push(item);
+                        yield item;
+                    }
+                }
+                return;
+            }
+
+            const seen = new Set<T>();
+            for (const item of self) {
+                if (!seen.has(item)) {
+                    seen.add(item);
+                    yield item;
+                }
+            }
+            for (const item of other) {
+                if (!seen.has(item)) {
+                    seen.add(item);
+                    yield item;
+                }
+            }
+        });
+    }
+
+    /**
+     * Yields unique values from this iterable that also exist in `other`, preserving this iterable's order.
+     *
+     * Output deduplication is always applied, so repeated matching values are emitted once.
+     *
+     * Complexity:
+     * - default mode: O(n + m) expected.
+     * - keyExtractor mode: O(n + m) expected.
+     * - equalityComparer mode: O((n + m)^2) worst case due to linear scans.
+     *
+     * @param other Iterable used as membership source.
+     * @param opts Optional equality strategy; `keyExtractor` and `equalityComparer` are mutually exclusive.
+     * @returns A lazy iterable of intersection values.
+     */
+    public intersection(other: Iterable<T>): ILazyIterable<T>;
+    public intersection<K>(other: Iterable<T>, opts: { keyExtractor: (item: T) => K }): ILazyIterable<T>;
+    public intersection(other: Iterable<T>, opts: { equalityComparer: (a: T, b: T) => boolean }): ILazyIterable<T>;
+    public intersection<K>(other: Iterable<T>, opts?: SetOpOptions<T, K>): ILazyIterable<T> {
+        const strategy = LazyIterable.createEqualityStrategy(opts);
+        return this.extend(function* genIntersection(self) {
+            if (strategy.mode === 'key') {
+                const otherKeys = new Set<K>();
+                for (const item of other) {
+                    otherKeys.add(strategy.getKey(item));
+                }
+
+                const yieldedKeys = new Set<K>();
+                for (const item of self) {
+                    const key = strategy.getKey(item);
+                    if (otherKeys.has(key) && !yieldedKeys.has(key)) {
+                        yieldedKeys.add(key);
+                        yield item;
+                    }
+                }
+                return;
+            }
+
+            if (strategy.mode === 'comparer') {
+                const otherItems = [...other];
+                const yieldedItems: T[] = [];
+                for (const item of self) {
+                    const isInOther = LazyIterable.containsByComparer(otherItems, item, strategy.equals);
+                    if (isInOther && !LazyIterable.containsByComparer(yieldedItems, item, strategy.equals)) {
+                        yieldedItems.push(item);
+                        yield item;
+                    }
+                }
+                return;
+            }
+
+            const otherSet = new Set<T>(other);
+            const yielded = new Set<T>();
+            for (const item of self) {
+                if (otherSet.has(item) && !yielded.has(item)) {
+                    yielded.add(item);
+                    yield item;
+                }
+            }
+        });
+    }
+
+    /**
+     * Yields unique values from this iterable that do not exist in `other`, preserving this iterable's order.
+     *
+     * Complexity:
+     * - default mode: O(n + m) expected.
+     * - keyExtractor mode: O(n + m) expected.
+     * - equalityComparer mode: O((n + m)^2) worst case due to linear scans.
+     *
+     * @param other Iterable used as exclusion source.
+     * @param opts Optional equality strategy; `keyExtractor` and `equalityComparer` are mutually exclusive.
+     * @returns A lazy iterable of left-only values.
+     */
+    public difference(other: Iterable<T>): ILazyIterable<T>;
+    public difference<K>(other: Iterable<T>, opts: { keyExtractor: (item: T) => K }): ILazyIterable<T>;
+    public difference(other: Iterable<T>, opts: { equalityComparer: (a: T, b: T) => boolean }): ILazyIterable<T>;
+    public difference<K>(other: Iterable<T>, opts?: SetOpOptions<T, K>): ILazyIterable<T> {
+        const strategy = LazyIterable.createEqualityStrategy(opts);
+        return this.extend(function* genDifference(self) {
+            if (strategy.mode === 'key') {
+                const otherKeys = new Set<K>();
+                for (const item of other) {
+                    otherKeys.add(strategy.getKey(item));
+                }
+
+                const yieldedKeys = new Set<K>();
+                for (const item of self) {
+                    const key = strategy.getKey(item);
+                    if (!otherKeys.has(key) && !yieldedKeys.has(key)) {
+                        yieldedKeys.add(key);
+                        yield item;
+                    }
+                }
+                return;
+            }
+
+            if (strategy.mode === 'comparer') {
+                const otherItems = [...other];
+                const yieldedItems: T[] = [];
+                for (const item of self) {
+                    const isInOther = LazyIterable.containsByComparer(otherItems, item, strategy.equals);
+                    if (!isInOther && !LazyIterable.containsByComparer(yieldedItems, item, strategy.equals)) {
+                        yieldedItems.push(item);
+                        yield item;
+                    }
+                }
+                return;
+            }
+
+            const otherSet = new Set<T>(other);
+            const yielded = new Set<T>();
+            for (const item of self) {
+                if (!otherSet.has(item) && !yielded.has(item)) {
+                    yielded.add(item);
+                    yield item;
+                }
+            }
+        });
+    }
+
+    /**
+     * Yields values that exist in exactly one input, preserving source-local order.
+     *
+     * Ordering is deterministic:
+     * - first, left-only values from `this` in encounter order
+     * - second, right-only values from `other` in encounter order
+     *
+     * Complexity:
+     * - default mode: O(n + m) expected.
+     * - keyExtractor mode: O(n + m) expected.
+     * - equalityComparer mode: O((n + m)^2) worst case due to linear scans and materialized lookups.
+     *
+     * @param other Iterable to compare against.
+     * @param opts Optional equality strategy; `keyExtractor` and `equalityComparer` are mutually exclusive.
+     * @returns A lazy iterable of symmetric difference values.
+     */
+    public symmetricDifference(other: Iterable<T>): ILazyIterable<T>;
+    public symmetricDifference<K>(other: Iterable<T>, opts: { keyExtractor: (item: T) => K }): ILazyIterable<T>;
+    public symmetricDifference(other: Iterable<T>, opts: { equalityComparer: (a: T, b: T) => boolean }): ILazyIterable<T>;
+    public symmetricDifference<K>(other: Iterable<T>, opts?: SetOpOptions<T, K>): ILazyIterable<T> {
+        const strategy = LazyIterable.createEqualityStrategy(opts);
+        return this.extend(function* genSymmetricDifference(self) {
+            if (strategy.mode === 'key') {
+                const otherKeys = new Set<K>();
+                for (const item of other) {
+                    otherKeys.add(strategy.getKey(item));
+                }
+
+                const thisKeys = new Set<K>();
+                const yieldedKeys = new Set<K>();
+                for (const item of self) {
+                    const key = strategy.getKey(item);
+                    thisKeys.add(key);
+                    if (!otherKeys.has(key) && !yieldedKeys.has(key)) {
+                        yieldedKeys.add(key);
+                        yield item;
+                    }
+                }
+
+                for (const item of other) {
+                    const key = strategy.getKey(item);
+                    if (!thisKeys.has(key) && !yieldedKeys.has(key)) {
+                        yieldedKeys.add(key);
+                        yield item;
+                    }
+                }
+                return;
+            }
+
+            if (strategy.mode === 'comparer') {
+                const otherItems = [...other];
+                const thisUniqueItems: T[] = [];
+                const yieldedItems: T[] = [];
+
+                for (const item of self) {
+                    if (!LazyIterable.containsByComparer(thisUniqueItems, item, strategy.equals)) {
+                        thisUniqueItems.push(item);
+                    }
+
+                    const isInOther = LazyIterable.containsByComparer(otherItems, item, strategy.equals);
+                    if (!isInOther && !LazyIterable.containsByComparer(yieldedItems, item, strategy.equals)) {
+                        yieldedItems.push(item);
+                        yield item;
+                    }
+                }
+
+                for (const item of other) {
+                    const isInLeft = LazyIterable.containsByComparer(thisUniqueItems, item, strategy.equals);
+                    if (!isInLeft && !LazyIterable.containsByComparer(yieldedItems, item, strategy.equals)) {
+                        yieldedItems.push(item);
+                        yield item;
+                    }
+                }
+                return;
+            }
+
+            const otherSet = new Set<T>(other);
+            const thisSet = new Set<T>();
+            const yielded = new Set<T>();
+
+            for (const item of self) {
+                thisSet.add(item);
+                if (!otherSet.has(item) && !yielded.has(item)) {
+                    yielded.add(item);
+                    yield item;
+                }
+            }
+
+            for (const item of other) {
+                if (!thisSet.has(item) && !yielded.has(item)) {
+                    yielded.add(item);
+                    yield item;
+                }
+            }
+        });
+    }
+
+    /**
+     * Returns a new iterable sorted by one or more directives.
+     *
+     * Sorting materializes the entire sequence by design, then performs a stable sort:
+     * when all directives compare equal, original input order is preserved.
+     *
+     * Default key comparison uses:
+     * - null/undefined last
+     * - number, string, bigint, and Date comparisons when applicable
+     * - relational fallback (`<`/`>`) for other comparable key types, otherwise equality
+     *
+     * @param directives Ordered list of sort directives; at least one is required.
+     * @returns A lazy iterable that yields the sorted values.
+     */
+    public sort(...directives: Array<SortDirective<T, unknown>>): ILazyIterable<T> {
+        const comparer = LazyIterable.buildComparer(directives);
+        return this.extend(function* genSort(self) {
+            const decorated: Array<{ item: T; index: number }> = [];
+            let index = 0;
+            for (const item of self) {
+                decorated.push({ item, index });
+                index += 1;
+            }
+
+            decorated.sort((a, b) => {
+                const primary = comparer(a.item, b.item);
+                if (primary !== 0) {
+                    return primary;
+                }
+                return a.index - b.index;
+            });
+
+            for (const entry of decorated) {
+                yield entry.item;
             }
         });
     }

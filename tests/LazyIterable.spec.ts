@@ -9,6 +9,15 @@ describe('LazyIterable', () => {
         expect(result).toEqual(array);
     });
 
+    test('should apply operations at module initialization', () => {
+        const subject = LazyIterable.from([1, 2, 3]);
+
+        expect(typeof subject.map).toBe('function');
+        expect(typeof subject.count).toBe('function');
+        expect(typeof subject.toArray).toBe('function');
+        expect(typeof subject[Symbol.iterator]).toBe('function');
+    });
+
     test('should return a fresh iterator', () => {
         const subject = TrackedTestIterable.from([1, 2, 3]);
         const iterator1 = subject[Symbol.iterator]();

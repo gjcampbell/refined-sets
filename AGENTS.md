@@ -44,7 +44,7 @@ When adding/changing behavior, add tests that cover:
 - Avoid "clever" tricks that obscure invariants; the data-structure invariants must be readable.
 - Never implement in a base class features that are sub-class specific,
   For example, "peek" belongs to queues or stacks, not their general-purpose base class, BaseOrderedSet.
-- Do not use the word "Core"
+- Do not use the words "Core" or "Helper"
 - Be deliberate about expanding the public API. Keep it clean and separate complex non-public code into the internal folder
 
 ## Change checklist
